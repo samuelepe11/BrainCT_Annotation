@@ -1,0 +1,21 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# PyCharm
+.idea/
+
+# Gradio
+.gradio/
+.gradio/certificate.pem
+
+# Generated reports and medical data
+*.dcm
+*.zip
+*_annotations.csv
+
+# Operating system files
+.DS_Store
+Thumbs.db
