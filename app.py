@@ -5,6 +5,8 @@ import gradio as gr
 import pandas as pd
 import numpy as np
 import base64
+import threading
+import webbrowser
 from PIL import Image
 from pathlib import Path
 from pydicom import dcmread
@@ -77,6 +79,16 @@ def change_slice(new_idx, annotation, state):
 def csv_contains_annotations(state):
     dataframe = read_annotation_csv(state)
     return not dataframe.empty
+
+
+def disable_start_button():
+    return gr.update(interactive=False)
+
+
+def enable_start_button(zip_file):
+    if zip_file is None:
+        return gr.update(interactive=False)
+    return gr.update(interactive=True)
 
 
 def extract_zip(zip_file):
@@ -164,6 +176,10 @@ def next_slice(annotation, state):
     return state, gr.update(value=new_idx), annotator_value, download_update, status_text
 
 
+def open_app_in_dark_mode():
+    webbrowser.open("http://127.0.0.1:7860/?__theme=dark")
+
+
 def previous_slice(annotation, state):
     current_idx = int(state["current_idx"])
     new_idx = max(0, current_idx - DELTA_SLICE)
@@ -185,7 +201,7 @@ def read_annotation_csv(state):
 
 def reset_app():
     return (None, gr.update(visible=True), gr.update(visible=False), gr.update(value=None), gr.update(visible=False),
-            INITIAL_STATUS)
+            gr.update(interactive=False), INITIAL_STATUS)
 
 
 def store_slice_in_csv(slice_idx, annotation, state):
@@ -245,7 +261,7 @@ with gr.Blocks() as demo:
 
     with gr.Column(visible=True) as upload_area:
         zip_upload = gr.File(label="Carica file ZIP", file_types=[".zip"])
-        start_btn = gr.Button("Inizia", icon="icons/next.png")
+        start_btn = gr.Button("Inizia", icon="icons/next.png", interactive=False)
 
     with gr.Column(visible=False) as annotation_area:
         status = gr.Markdown(INITIAL_STATUS)
@@ -267,23 +283,36 @@ with gr.Blocks() as demo:
                                 """)
                     restart_btn = gr.Button("Annota un altro paziente", visible=False)
 
+    zip_upload.upload(
+        fn=enable_start_button,
+        inputs=zip_upload,
+        outputs=start_btn,
+    )
+
+    zip_upload.clear(
+        fn=disable_start_button,
+        inputs=None,
+        outputs=start_btn,
+    )
     start_btn.click(fn=extract_zip, inputs=zip_upload, outputs=[state, upload_area, annotation_area, slice_slider,
                                                                 annotator, download_btn, restart_btn, status])
-    slice_slider.input(fn=change_slice, inputs=[slice_slider, annotator, state], outputs=[state, annotator, download_btn,
-                                                                                          status])
     annotator.change(fn=synchronize_current_slice, inputs=[annotator, state], outputs=[state, download_btn])
     annotator.clear(fn=avoid_clear_action, inputs=[slice_slider, state], outputs=[state, annotator, download_btn, status])
+    slice_slider.input(fn=change_slice, inputs=[slice_slider, annotator, state], outputs=[state, annotator, download_btn,
+                                                                                          status])
     backward_btn.click(fn=previous_slice, inputs=[annotator, state], outputs=[state, slice_slider, annotator,
                                                                               download_btn, status])
     forward_btn.click(fn=next_slice, inputs=[annotator, state], outputs=[state, slice_slider, annotator, download_btn,
                                                                          status])
+    restart_btn.click(fn=reset_app, inputs=None, outputs=[state, upload_area, annotation_area, zip_upload, restart_btn,
+                                                          start_btn, status])
 
     print("""
     ===========================================================================
                             Brain CT Annotation Platform
 
     The application is running and should open automatically in your browser.
-    If it does not, open visit http://127.0.0.1:7860
+    If it does not, open visit http://127.0.0.1:7860?__theme=dark
 
     Press Ctrl+C to stop the server when finished.
     ===========================================================================
@@ -291,4 +320,5 @@ with gr.Blocks() as demo:
 
 
 if __name__ == "__main__":
-    demo.launch(share=False, css=ANNOTATOR_CSS, inbrowser=True)
+    threading.Timer(1.5, open_app_in_dark_mode).start()
+    demo.launch(share=False, css=ANNOTATOR_CSS, inbrowser=False)
