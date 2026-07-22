@@ -105,9 +105,17 @@ def extract_zip(zip_file):
     image_paths = []
     for root, _, files in os.walk(extract_dir):
         for file in files:
+            if file.startswith("._") or file == ".DS_Store":
+                continue
             path = Path(root) / file
-            if path.suffix.lower() == ".dcm":
-                image_paths.append(str(path))
+            if path.suffix.lower() != ".dcm":
+                continue
+            try:
+                dcmread(str(path), stop_before_pixels=True, defer_size=0)
+            except Exception:
+                print(f"Skipping non-DICOM file: {path}")
+                continue
+            image_paths.append(str(path))
     image_paths = sorted(image_paths)
     print("PATHS", image_paths)
 

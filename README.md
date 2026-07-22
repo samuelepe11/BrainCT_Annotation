@@ -37,7 +37,7 @@ Aprire il terminale ed eseguire:
 git clone https://github.com/samuelepe11/BrainCT_Annotation.git
 cd BrainCT_Annotation
 
-python3.11 -m venv .venv
+python -m venv .venv
 source .venv/bin/activate
 
 python -m pip install --upgrade pip
