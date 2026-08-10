@@ -1,4 +1,7 @@
 import os
+import sys
+sys.stderr = open(os.devnull, "w")
+
 import zipfile
 import tempfile
 import gradio as gr
@@ -7,11 +10,12 @@ import numpy as np
 import base64
 import threading
 import webbrowser
-from PIL import Image
+from PIL import Image, ImageDraw
 from pathlib import Path
 from pydicom import dcmread
 from pydicom.pixel_data_handlers.util import apply_modality_lut, apply_voi_lut
 from gradio_image_annotation import image_annotator
+from datetime import datetime
 
 # Global variables
 ANNOTATOR_CSS = """
@@ -34,7 +38,13 @@ INITIAL_STATUS = ("Carica un nuovo file ZIP per iniziare una nuova annotazione. 
                   "(.dcm) per ogni slice della TC cerebrale di un solo paziente.")
 CSV_COLUMNS = ["slice_idx", "image_name", "height", "width", "label", "x_min", "y_min", "x_max", "y_max"]
 DELTA_SLICE = 1
+LABELS = ["Foro di entrata", "Proiettile", "Frammento di proiettile", "Segno di impatto osseo", "Frammento osseo", "Foro di uscita"]
+LABEL_COLORS = [(255, 168, 77), (92, 172, 238), (255, 99, 71), (118, 238, 118), (255, 145, 164), (255, 250, 138)]
 
+TRAJECTORY_LABELS = ["Foro di entrata", "Segno di impatto osseo", "Proiettile", "Foro di uscita"]
+TRAJECTORY_COLOR = (255, 0, 0)
+TRAJECTORY_RADIUS = 30
+TRAJECTORY_ALPHA = 95
 
 # Functions
 def avoid_clear_action(idx, state):
@@ -45,7 +55,7 @@ def avoid_clear_action(idx, state):
 
     # An empty box list deletes all CSV rows for this slice.
     has_annotations = store_slice_in_csv(slice_idx=idx, annotation={"boxes": []}, state=state)
-    image = load_image(image_path)
+    image = draw_trajectory(load_image(image_path), idx, state)#image = load_image(image_path)
     return (state, make_annotator_value(image, []), gr.update(value=state["csv_path"] if has_annotations else None,
                                                               interactive=has_annotations, visible=True),
             f"## Slice {idx + 1}/{len(state['image_paths'])}\n" + "Tutte le annotazioni della slice corrente sono state rimosse.")
@@ -66,7 +76,7 @@ def change_slice(new_idx, annotation, state):
 
     # Load the newly selected slice.
     image_path = state["image_paths"][new_idx]
-    image = load_image(image_path)
+    image = draw_trajectory(load_image(image_path), new_idx, state)#image = load_image(image_path)
 
     # Retrieve this slice's previous boxes directly from the CSV.
     boxes = get_boxes_from_csv(new_idx, state)
@@ -121,23 +131,16 @@ def extract_zip(zip_file):
 
     if len(image_paths) == 0:
         raise gr.Error("La cartella è vuota o non contiene immagini DICOM (.dcm). Per favore carica un file ZIP valido.")
-    case_name = Path(zip_file.name).stem
-    csv_path = os.path.join(workdir, f"{case_name}_annotations.csv")
+    csv_path = os.path.join(workdir, f"annotation_session_{datetime.now().strftime('%Y%m%d%H%M%S')}_n{len(image_paths)}.csv")
 
     # Initially create an empty CSV containing only the column headers.
     pd.DataFrame(columns=CSV_COLUMNS).to_csv(csv_path, index=False)
-    state = {"workdir": workdir, "image_paths": image_paths, "csv_path": csv_path, "current_idx": 0 }
+    state = {"workdir": workdir, "image_paths": image_paths, "csv_path": csv_path, "current_idx": 0,
+             "trajectory_enabled": False}
     first_img = load_image(image_paths[0])
-    return (
-        state,
-        gr.update(visible=False),
-        gr.update(visible=True),
-        gr.update(minimum=0, maximum=len(image_paths) - 1, value=0, step=1, visible=True),
-        gr.update(value=make_annotator_value(first_img, []), visible=True),
-        gr.update(value=None, visible=True, interactive=False),
-        gr.update(visible=True),
-        f"## Slice 1/{len(image_paths)}\n" + f"Sono state caricate **{len(image_paths)} slice**.",
-    )
+    return (state, gr.update(visible=False), gr.update(visible=True), gr.update(minimum=0, maximum=len(image_paths) - 1, value=0, step=1, visible=True),
+            gr.update(value=make_annotator_value(first_img, []), visible=True), gr.update(value=None, visible=True, interactive=False), gr.update(visible=True),
+            f"## Slice 1/{len(image_paths)}\n" + f"Sono state caricate **{len(image_paths)} slice**.")
 
 
 def get_boxes_from_csv(slice_idx, state):
@@ -147,8 +150,10 @@ def get_boxes_from_csv(slice_idx, state):
     slice_rows = dataframe[dataframe["slice_idx"].astype(int) == int(slice_idx)]
     boxes = []
     for _, row in slice_rows.iterrows():
-        boxes.append({"label": str(row["label"]), "xmin": int(round(float(row["x_min"]))), "ymin": int(round(float(row["y_min"]))),
-                      "xmax": int(round(float(row["x_max"]))), "ymax": int(round(float(row["y_max"])))})
+        label = str(row["label"])
+        color = LABEL_COLORS[LABELS.index(label)]
+        boxes.append({"label": label, "xmin": int(round(float(row["x_min"]))), "ymin": int(round(float(row["y_min"]))),
+                      "xmax": int(round(float(row["x_max"]))), "ymax": int(round(float(row["y_max"]))), "color": color})
     return boxes
 
 
@@ -233,10 +238,7 @@ def store_slice_in_csv(slice_idx, annotation, state):
         new_dataframe = pd.DataFrame(new_rows, columns=CSV_COLUMNS)
         dataframe = pd.concat([dataframe, new_dataframe], ignore_index=True)
     if not dataframe.empty:
-        dataframe = dataframe.sort_values(
-            by=["slice_idx", "label"],
-            kind="stable",
-        ).reset_index(drop=True)
+        dataframe = dataframe.sort_values(by=["slice_idx", "label"], kind="stable").reset_index(drop=True)
 
     # Write to a temporary file first, then replace the previous CSV
     temporary_path = state["csv_path"] + ".tmp"
@@ -252,6 +254,103 @@ def synchronize_current_slice(annotation, state):
     has_annotations = store_slice_in_csv(slice_idx=current_idx, annotation=annotation, state=state)
     return state, gr.update(value=state["csv_path"] if has_annotations else None, interactive=has_annotations,
                             visible=True)
+
+
+def get_trajectory_landmarks(state):
+    dataframe = read_annotation_csv(state)
+    if dataframe.empty:
+        return []
+    dataframe = dataframe[dataframe["label"].isin(TRAJECTORY_LABELS)].copy()
+    if dataframe.empty:
+        return []
+    dataframe["center_x"] = (dataframe["x_min"].astype(float) + dataframe["x_max"].astype(float)) / 2
+    dataframe["center_y"] = (dataframe["y_min"].astype(float) + dataframe["y_max"].astype(float)) / 2
+    landmarks = []
+    for label in TRAJECTORY_LABELS:
+        label_dataframe = dataframe[dataframe["label"] == label].copy()
+        if label_dataframe.empty:
+            continue
+        label_dataframe = label_dataframe.sort_values(by="slice_idx")
+        label_dataframe["group"] = (label_dataframe["slice_idx"].astype(int).diff().fillna(1).abs() > 1).cumsum()
+        for _, group in label_dataframe.groupby("group"):
+            landmarks.append({"label": label, "slice_idx": float(group["slice_idx"].astype(float).mean()),
+                              "x": float(group["center_x"].mean()),
+                              "y": float(group["center_y"].mean())})
+    landmarks = sorted(landmarks, key=lambda point: point["slice_idx"])
+    entry_points = [point for point in landmarks if point["label"] == "Foro di entrata"]
+    exit_points = [point for point in landmarks if point["label"] == "Foro di uscita"]
+    if entry_points:
+        entry = entry_points[0]
+        if abs(entry["slice_idx"] - landmarks[-1]["slice_idx"]) < abs(entry["slice_idx"] - landmarks[0]["slice_idx"]):
+            landmarks.reverse()
+    elif exit_points:
+        exit_point = exit_points[0]
+        if abs(exit_point["slice_idx"] - landmarks[0]["slice_idx"]) < abs(exit_point["slice_idx"] - landmarks[-1]["slice_idx"]):
+            landmarks.reverse()
+    return landmarks
+
+
+def get_trajectory_position(slice_idx, landmarks):
+    if len(landmarks) < 2:
+        return None
+    for i in range(len(landmarks) - 1):
+        point_1 = landmarks[i]
+        point_2 = landmarks[i + 1]
+        z_1 = point_1["slice_idx"]
+        z_2 = point_2["slice_idx"]
+        if min(z_1, z_2) <= slice_idx <= max(z_1, z_2):
+            if z_1 == z_2:
+                return point_1["x"], point_1["y"]
+            interpolation = (slice_idx - z_1) / (z_2 - z_1)
+            x = point_1["x"] + interpolation * (point_2["x"] - point_1["x"])
+            y = point_1["y"] + interpolation * (point_2["y"] - point_1["y"])
+            return x, y
+    return None
+
+
+def draw_trajectory(image, slice_idx, state):
+    if not state.get("trajectory_enabled", False):
+        return image
+    landmarks = get_trajectory_landmarks(state)
+    if len(landmarks) < 2:
+        return image
+    position = get_trajectory_position(slice_idx, landmarks)
+    if position is None:
+        return image
+    x, y = position
+    x = int(round(x))
+    y = int(round(y))
+    is_landmark = any(abs(point["slice_idx"] - slice_idx) < 0.5 for point in landmarks)
+    radius = TRAJECTORY_RADIUS + 3 if is_landmark else TRAJECTORY_RADIUS
+    image_rgba = image.convert("RGBA")
+    overlay = Image.new("RGBA", image_rgba.size, (0, 0, 0, 0))
+    draw = ImageDraw.Draw(overlay)
+
+    # Semi-transparent trajectory marker
+    draw.ellipse((x - radius, y - radius, x + radius, y + radius),
+                 fill=(*TRAJECTORY_COLOR, TRAJECTORY_ALPHA))
+    image_rgba = Image.alpha_composite(image_rgba, overlay)
+    return image_rgba.convert("RGB")
+
+
+def trace_trajectory(annotation, state):
+    if state is None:
+        raise gr.Error("Non è presente alcuna sessione di annotazione attiva.")
+    current_idx = int(state["current_idx"])
+    has_annotations = store_slice_in_csv(slice_idx=current_idx, annotation=annotation, state=state)
+    landmarks = get_trajectory_landmarks(state)
+    if len(landmarks) < 2:
+        state["trajectory_enabled"] = False
+        gr.Warning("Per tracciare il percorso sono necessarie almeno due annotazioni tra foro di entrata, segno di impatto osseo, proiettile e foro di uscita.")
+        image = load_image(state["image_paths"][current_idx])
+        boxes = get_boxes_from_csv(current_idx, state)
+        return state, make_annotator_value(image, boxes), gr.update(value=state["csv_path"] if has_annotations else None,
+                                                                    interactive=has_annotations, visible=True)
+    state["trajectory_enabled"] = True
+    image = draw_trajectory(load_image(state["image_paths"][current_idx]), current_idx, state)
+    boxes = get_boxes_from_csv(current_idx, state)
+    return state, make_annotator_value(image, boxes), gr.update(value=state["csv_path"] if has_annotations else None,
+                                                                interactive=has_annotations, visible=True)
 
 
 with gr.Blocks() as demo:
@@ -275,13 +374,16 @@ with gr.Blocks() as demo:
         status = gr.Markdown(INITIAL_STATUS)
         with gr.Row():
             with gr.Column(min_width=500):
-                annotator = image_annotator(label_list=["Proiettile", "Frammento di proiettile", "Frammento osseo", "Emorragia",
-                                                        "Altro"], show_label=False, visible=False, elem_id="ct-annotator")
+                annotator = image_annotator(label_list=LABELS, label_colors=LABEL_COLORS.copy(), show_label=False, visible=False,
+                                            elem_id="ct-annotator")
             with gr.Column():
                 with gr.Row():
                     backward_btn = gr.Button(f"Indietro di {DELTA_SLICE} slice", icon="icons/back.png")
                     forward_btn = gr.Button(f"Avanti di {DELTA_SLICE} slice", icon="icons/next.png")
                 slice_slider = gr.Slider(minimum=0, maximum=1, value=0, step=1, label="Slice", visible=False)
+                with gr.Row():
+                    trajectory_btn = gr.Button("Traccia percorso approssimato", icon="icons/trajectory.png")
+                    gr.Markdown("*Questa modalità di visualizzazione è consigliata solo in presenza di un singolo proiettile, nel cui percorso non sono attese biforcazioni.*")
                 download_btn = gr.DownloadButton(label="Scarica report CSV", value=None, visible=False, interactive=False,
                                                  icon="icons/download.png")
                 with gr.Column(elem_id="restart-section"):
@@ -291,17 +393,8 @@ with gr.Blocks() as demo:
                                 """)
                     restart_btn = gr.Button("Annota un altro paziente", visible=False)
 
-    zip_upload.upload(
-        fn=enable_start_button,
-        inputs=zip_upload,
-        outputs=start_btn,
-    )
-
-    zip_upload.clear(
-        fn=disable_start_button,
-        inputs=None,
-        outputs=start_btn,
-    )
+    zip_upload.upload(fn=enable_start_button, inputs=zip_upload, outputs=start_btn)
+    zip_upload.clear(fn=disable_start_button, inputs=None, outputs=start_btn)
     start_btn.click(fn=extract_zip, inputs=zip_upload, outputs=[state, upload_area, annotation_area, slice_slider,
                                                                 annotator, download_btn, restart_btn, status])
     annotator.change(fn=synchronize_current_slice, inputs=[annotator, state], outputs=[state, download_btn])
@@ -314,6 +407,7 @@ with gr.Blocks() as demo:
                                                                          status])
     restart_btn.click(fn=reset_app, inputs=None, outputs=[state, upload_area, annotation_area, zip_upload, restart_btn,
                                                           start_btn, status])
+    trajectory_btn.click(fn=trace_trajectory, inputs=[annotator, state], outputs=[state, annotator, download_btn])
 
     print("""
     ===========================================================================
@@ -329,4 +423,4 @@ with gr.Blocks() as demo:
 
 if __name__ == "__main__":
     threading.Timer(1.5, open_app_in_dark_mode).start()
-    demo.launch(share=False, css=ANNOTATOR_CSS, inbrowser=False)
+    demo.launch(share=False, css=ANNOTATOR_CSS, inbrowser=False, show_error=False, quiet=True)

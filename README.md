@@ -67,6 +67,8 @@ Ctrl+C
 5. Disegnare una o più bounding box sulle aree di interesse e elezionare l’etichetta appropriata per ogni bounding box. Non è necessario annotare ogni slice.
 6. Premere **Scarica report CSV** per esportare le annotazioni ed, eventualmente, premere **Annota un altro paziente** per iniziare una nuova sessione.
 
+> **Nota:** una volta identificate almeno due aree di passaggio del proiettile (*foro di entrata*, *segno di impatto osseo*, *proiettile*, *foro di uscita*), è possibile premere **Traccia percorso approssimato** per visualizzare nelle slice intermedie un marcatore rosso che rappresenta la traiettoria approssimata del proiettile. Questa modalità di visualizzazione è consigliata solo in presenza di un singolo proiettile, il cui percorso possa essere ragionevolmente rappresentato mediante segmenti lineari e non presenti biforcazioni attese. Il marcatore deve essere considerato esclusivamente come una guida visiva per l’utente e non viene memorizzato nel file CSV.
+
 ## Formato del file CSV
 Il report contiene una riga per ogni bounding box annotata.
 Le colonne esportate sono:
