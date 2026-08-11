@@ -41,7 +41,7 @@ DELTA_SLICE = 1
 LABELS = ["Foro di entrata", "Proiettile", "Frammento di proiettile", "Segno di impatto osseo", "Frammento osseo", "Foro di uscita"]
 LABEL_COLORS = [(255, 168, 77), (92, 172, 238), (255, 99, 71), (118, 238, 118), (255, 145, 164), (255, 250, 138)]
 
-TRAJECTORY_LABELS = ["Foro di entrata", "Segno di impatto osseo", "Proiettile", "Foro di uscita"]
+TRAJECTORY_LABELS = ["Foro di entrata", "Proiettile", "Frammento di proiettile", "Segno di impatto osseo", "Foro di uscita"]
 TRAJECTORY_COLOR = (255, 0, 0)
 TRAJECTORY_RADIUS = 30
 TRAJECTORY_ALPHA = 95

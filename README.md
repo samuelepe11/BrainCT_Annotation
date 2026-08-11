@@ -37,12 +37,12 @@ Aprire il terminale ed eseguire:
 git clone https://github.com/samuelepe11/BrainCT_Annotation.git
 cd BrainCT_Annotation
 
-python -m venv .venv
+python3.11 -m venv .venv
 source .venv/bin/activate
 
-python -m pip install --upgrade pip
-python -m pip install -r requirements.txt
-python app.py
+python3.11 -m pip install --upgrade pip
+python3.11 -m pip install -r requirements.txt
+python3.11 app.py
 ```
 Se il setup è già stato effettuato una volta, è sufficiente eseguire:
 ```bash
@@ -58,7 +58,7 @@ Ctrl+C
 
 ## Utilizzo
 1. Preparare un file ZIP contenente le slice DICOM di un singolo paziente.
-2. Avviare l’applicazione con:
+2. Se l'applicazione non è già stata avviata, avviarla con:
    ```bash
    python app.py
    ```
@@ -94,14 +94,15 @@ L’applicazione viene eseguita localmente sul computer dell’utente.
 
 ## Risoluzione dei problemi
 
-### Il comando `python` non viene riconosciuto
-Su Windows provare:
+### Il comando `python3.11` non viene riconosciuto in MacOS o Linux
+Provare:
 ```bash
-py -3.11 app.py
-```
-Su macOS o Linux provare:
-```bash
-python3 app.py
+python -m venv .venv
+source .venv/bin/activate
+
+python -m pip install --upgrade pip
+python -m pip install -r requirements.txt
+python app.py
 ```
 
 ### L’ambiente virtuale non si attiva su PowerShell
@@ -117,5 +118,5 @@ source .venv/Scripts/activate
 ### La porta 7860 è già occupata
 Chiudere eventuali altre istanze dell’applicazione oppure modificare la porta in `app.py`:
 ```python
-demo.launch(share=False, server_name="127.0.0.1", server_port=7861, inbrowser=True)
+demo.launch(share=False, server_name="127.0.0.1", server_port=7861, inbrowser=True, show_error=False, quiet=True)
 ```
