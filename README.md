@@ -13,7 +13,7 @@ git clone https://github.com/samuelepe11/BrainCT_Annotation.git
 cd BrainCT_Annotation
 
 py -3.11 -m venv .venv
-source .venv/Scripts/activate
+.venv\Scripts\activate
 
 python -m pip install --upgrade pip
 python -m pip install -r requirements.txt
@@ -22,7 +22,7 @@ python app.py
 Se il setup è già stato effettuato una volta, è sufficiente eseguire:
 ```bash
 cd CARTELLA_DEL_PROGETTO
-source .venv/Scripts/activate
+.venv\Scripts\activate
 python app.py
 ```
 L’applicazione verrà aperta automaticamente nel browser.
