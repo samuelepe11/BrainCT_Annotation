@@ -4,7 +4,7 @@ Applicazione locale per l’annotazione di immagini DICOM mediante bounding box.
 ## Requisiti
 Prima dell’installazione assicurarsi di avere:
 - Git
-- Python 3.11
+- Python 3.11 (o superiore)
 
 ## Installazione su Windows
 Aprire **PowerShell** o il **Prompt dei comandi** ed eseguire:
@@ -12,7 +12,7 @@ Aprire **PowerShell** o il **Prompt dei comandi** ed eseguire:
 git clone https://github.com/samuelepe11/BrainCT_Annotation.git
 cd BrainCT_Annotation
 
-py -3.11 -m venv .venv
+py -3.11 -m venv .venv # se si possiede più versioni di Python, sostituire "-3.11" con il comando appropriato per la propria installazione es. "-3.14" per la verisone più recente
 .venv\Scripts\activate
 
 python -m pip install --upgrade pip
@@ -21,7 +21,7 @@ python app.py
 ```
 Se il setup è già stato effettuato una volta, è sufficiente eseguire:
 ```bash
-cd CARTELLA_DEL_PROGETTO
+cd CARTELLA_DEL_PROGETTO # sostituisci con il percorso della cartella del progetto OPPURE apri il terminale nella cartella del progetto
 .venv\Scripts\activate
 python app.py
 ```
@@ -32,7 +32,7 @@ Ctrl+C
 ```
 
 ## Installazione su macOS o Linux
-Aprire il terminale ed eseguire:
+Aprire il terminale nella cartella di interesse ed eseguire:
 ```bash
 git clone https://github.com/samuelepe11/BrainCT_Annotation.git
 cd BrainCT_Annotation
@@ -46,7 +46,7 @@ python3.11 app.py
 ```
 Se il setup è già stato effettuato una volta, è sufficiente eseguire:
 ```bash
-cd CARTELLA_DEL_PROGETTO
+cd CARTELLA_DEL_PROGETTO # sostituisci con il percorso della cartella del progetto OPPURE apri il terminale nella cartella del progetto
 source .venv/bin/activate
 python app.py
 ```
@@ -57,7 +57,15 @@ Ctrl+C
 ```
 
 ## Utilizzo
-1. Preparare un file ZIP contenente le slice DICOM di un singolo paziente.
+1. Preparare un file ZIP contenente le slice DICOM di un singolo paziente:
+   ```text
+   [nome cartella ZIP].zip
+      └── [nome sotto cartella]/
+          ├── IM-0001-0001.dcm
+          ├── IM-0001-0002.dcm
+          ├── IM-0001-0003.dcm
+          └── ...
+   ```
 2. Se l'applicazione non è già stata avviata, avviarla con:
    ```bash
    python app.py
