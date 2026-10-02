@@ -57,14 +57,15 @@ Ctrl+C
 ```
 
 ## Utilizzo
-1. Preparare un file ZIP contenente le slice DICOM di un singolo paziente:
+1. Preparare un file ZIP contenente le slice DICOM di un singolo paziente, ad esempio:
    ```text
    [nome cartella ZIP].zip
       └── [nome sotto cartella]/
           ├── IM-0001-0001.dcm
           ├── IM-0001-0002.dcm
           ├── IM-0001-0003.dcm
-          └── ...
+          ├── ...
+          └── IM-0001-0803.dcm
    ```
 2. Se l'applicazione non è già stata avviata, avviarla con:
    ```bash

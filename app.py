@@ -194,10 +194,10 @@ def change_contrast(value, annotation, state):
 
 
 # Functions
-def avoid_clear_action(idx, state):
+def avoid_clear_action(slice_number, state):
     if state is None:
         raise gr.Error("Non è presente alcuna sessione di annotazione attiva.")
-    idx = int(idx)
+    idx = int(slice_number) - 1
 
     # An empty box list deletes all CSV rows for this slice. The X also restores the original view.
     has_annotations = store_slice_in_csv(slice_idx=idx, annotation={"boxes": []}, state=state)
@@ -209,15 +209,27 @@ def avoid_clear_action(idx, state):
             gr.update(value=0.0), gr.update(value=1.0))
 
 
-def change_slice(new_idx, annotation, state):
+def change_slice(slice_number, annotation, state):
     if state is None:
         raise gr.Error("Non è presente alcuna sessione di annotazione attiva.")
-    new_idx = int(new_idx)
-    if new_idx < 0 or new_idx >= len(state["image_paths"]):
-        raise gr.Error("Indice della slice non valido.")
+
+    current_idx = int(state["current_idx"])
+
+    # Validate the value entered in the slice slider/text box.
+    if slice_number is None or slice_number == "":
+        slice_number = current_idx + 1
+    else:
+        try:
+            slice_number = int(float(slice_number))
+        except (TypeError, ValueError):
+            slice_number = current_idx + 1
+
+    # Clamp the visible slice number to the valid range 1...N.
+    slice_number = max(1, min(slice_number, len(state["image_paths"])))
+    new_idx = slice_number - 1
 
     # The annotator currently displays this slice.
-    previous_idx = int(state["current_idx"])
+    previous_idx = current_idx
 
     # Save the boxes currently displayed before changing image.
     has_annotations = store_slice_in_csv(slice_idx=previous_idx, annotation=annotation, state=state)
@@ -232,11 +244,14 @@ def change_slice(new_idx, annotation, state):
     # Retrieve this slice's previous boxes directly from the CSV.
     boxes = get_boxes_from_csv(new_idx, state)
     view = get_view_settings(state)
-    return (state, make_annotator_value(image, boxes), gr.update(value=state["csv_path"] if has_annotations else None,
-                                                                interactive=has_annotations, visible=True),
-            f"## Slice {new_idx + 1}/{len(state['image_paths'])}\n" + f"Annotazioni attualmente memorizzate nel CSV per questa slice: **{len(boxes)}**",
-            gr.update(value=float(view["brightness"])), gr.update(value=float(view["contrast"])))
 
+    return (state, make_annotator_value(image, boxes),
+            gr.update(value=state["csv_path"] if has_annotations else None,
+                      interactive=has_annotations, visible=True),
+            f"## Slice {new_idx + 1}/{len(state['image_paths'])}\n"
+            f"Annotazioni attualmente memorizzate nel CSV per questa slice: **{len(boxes)}**",
+            gr.update(value=float(view["brightness"])),
+            gr.update(value=float(view["contrast"])))
 
 def csv_contains_annotations(state):
     dataframe = read_annotation_csv(state)
@@ -290,7 +305,7 @@ def extract_zip(zip_file):
     state = {"workdir": workdir, "image_paths": image_paths, "csv_path": csv_path, "current_idx": 0,
              "trajectory_enabled": False, "view": DEFAULT_VIEW.copy()}
     first_img = render_slice(0, state)
-    return (state, gr.update(visible=False), gr.update(visible=True), gr.update(minimum=0, maximum=len(image_paths) - 1, value=0, step=1, visible=True),
+    return (state, gr.update(visible=False), gr.update(visible=True), gr.update(minimum=1, maximum=len(image_paths), value=1, step=1, visible=True),
             gr.update(value=make_annotator_value(first_img, []), visible=True), gr.update(value=None, visible=True, interactive=False), gr.update(visible=True),
             f"## Slice 1/{len(image_paths)}\n" + f"Sono state caricate **{len(image_paths)} slice**.")
 
@@ -340,8 +355,8 @@ def next_slice(annotation, state):
     current_idx = int(state["current_idx"])
     last_idx = len(state["image_paths"]) - 1
     new_idx = min(last_idx, current_idx + DELTA_SLICE)
-    state, annotator_value, download_update, status_text, brightness_update, contrast_update = change_slice(new_idx=new_idx, annotation=annotation, state=state)
-    return state, gr.update(value=new_idx), annotator_value, download_update, status_text, brightness_update, contrast_update
+    state, annotator_value, download_update, status_text, brightness_update, contrast_update = change_slice(slice_number=new_idx + 1, annotation=annotation, state=state)
+    return state, gr.update(value=new_idx + 1), annotator_value, download_update, status_text, brightness_update, contrast_update
 
 
 def open_app_in_dark_mode():
@@ -351,9 +366,9 @@ def open_app_in_dark_mode():
 def previous_slice(annotation, state):
     current_idx = int(state["current_idx"])
     new_idx = max(0, current_idx - DELTA_SLICE)
-    state, annotator_value, download_update, status_text, brightness_update, contrast_update = change_slice(new_idx=new_idx, annotation=annotation,
+    state, annotator_value, download_update, status_text, brightness_update, contrast_update = change_slice(slice_number=new_idx + 1, annotation=annotation,
                                                                                                               state=state)
-    return state, gr.update(value=new_idx), annotator_value, download_update, status_text, brightness_update, contrast_update
+    return state, gr.update(value=new_idx + 1), annotator_value, download_update, status_text, brightness_update, contrast_update
 
 
 def read_annotation_csv(state):
@@ -498,7 +513,7 @@ def trace_trajectory(annotation, state):
     landmarks = get_trajectory_landmarks(state)
     if len(landmarks) < 2:
         state["trajectory_enabled"] = False
-        gr.Warning("Per tracciare il percorso sono necessarie almeno due annotazioni tra foro di entrata, segno di impatto osseo, proiettile e foro di uscita.")
+        gr.Warning("Per tracciare il percorso sono necessarie almeno due annotazioni tra foro di entrata, segno di impatto osseo, proiettile, probabile punto di passaggio e foro di uscita.")
         image = render_slice(current_idx, state)
         boxes = get_boxes_from_csv(current_idx, state)
         return state, make_annotator_value(image, boxes), gr.update(value=state["csv_path"] if has_annotations else None,
@@ -545,7 +560,7 @@ with gr.Blocks() as demo:
                 with gr.Row():
                     backward_btn = gr.Button(f"Indietro di {DELTA_SLICE} slice", icon="icons/back.png")
                     forward_btn = gr.Button(f"Avanti di {DELTA_SLICE} slice", icon="icons/next.png")
-                slice_slider = gr.Slider(minimum=0, maximum=1, value=0, step=1, label="Slice", visible=False)
+                slice_slider = gr.Slider(minimum=1, maximum=2, value=1, step=1, label="Slice", visible=False)
                 with gr.Row():
                     trajectory_btn = gr.Button("Traccia percorso approssimato", icon="icons/trajectory.png")
                     gr.Markdown("*Questa modalità di visualizzazione è consigliata solo in presenza di un singolo proiettile, nel cui percorso non sono attese biforcazioni.*")
@@ -565,8 +580,8 @@ with gr.Blocks() as demo:
     annotator.change(fn=synchronize_current_slice, inputs=[annotator, state], outputs=[state, download_btn])
     annotator.clear(fn=avoid_clear_action, inputs=[slice_slider, state], outputs=[state, annotator, download_btn, status,
                                                                                  brightness_slider, contrast_slider])
-    slice_slider.input(fn=change_slice, inputs=[slice_slider, annotator, state], outputs=[state, annotator, download_btn,
-                                                                                          status, brightness_slider, contrast_slider])
+    slice_slider.change(fn=change_slice, inputs=[slice_slider, annotator, state], outputs=[state, annotator, download_btn,
+                                                                                          status, brightness_slider, contrast_slider], preprocess=False)
     backward_btn.click(fn=previous_slice, inputs=[annotator, state], outputs=[state, slice_slider, annotator,
                                                                               download_btn, status, brightness_slider, contrast_slider])
     forward_btn.click(fn=next_slice, inputs=[annotator, state], outputs=[state, slice_slider, annotator, download_btn,
@@ -575,8 +590,8 @@ with gr.Blocks() as demo:
     rotate_right_btn.click(fn=rotate_right, inputs=[annotator, state], outputs=[state, annotator, download_btn])
     flip_horizontal_btn.click(fn=flip_horizontal, inputs=[annotator, state], outputs=[state, annotator, download_btn])
     flip_vertical_btn.click(fn=flip_vertical, inputs=[annotator, state], outputs=[state, annotator, download_btn])
-    brightness_slider.input(fn=change_brightness, inputs=[brightness_slider, annotator, state], outputs=[state, annotator, download_btn])
-    contrast_slider.input(fn=change_contrast, inputs=[contrast_slider, annotator, state], outputs=[state, annotator, download_btn])
+    brightness_slider.change(fn=change_brightness, inputs=[brightness_slider, annotator, state], outputs=[state, annotator, download_btn])
+    contrast_slider.change(fn=change_contrast, inputs=[contrast_slider, annotator, state], outputs=[state, annotator, download_btn])
     restart_btn.click(fn=reset_app, inputs=None, outputs=[state, upload_area, annotation_area, zip_upload, restart_btn,
                                                           start_btn, status, brightness_slider, contrast_slider])
     trajectory_btn.click(fn=trace_trajectory, inputs=[annotator, state], outputs=[state, annotator, download_btn])
