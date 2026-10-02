@@ -186,10 +186,22 @@ def flip_vertical(annotation, state):
 
 
 def change_brightness(value, annotation, state):
+    if state is None or value is None:
+        return state, gr.skip(), gr.skip()
+    value = float(value)
+    view = get_view_settings(state)
+    if value == float(view["brightness"]):
+        return state, gr.skip(), gr.skip()
     return update_temporary_view(annotation, state, brightness=value)
 
 
 def change_contrast(value, annotation, state):
+    if state is None or value is None:
+        return state, gr.skip(), gr.skip()
+    value = float(value)
+    view = get_view_settings(state)
+    if value == float(view["contrast"]):
+        return state, gr.skip(), gr.skip()
     return update_temporary_view(annotation, state, contrast=value)
 
 
@@ -230,6 +242,11 @@ def change_slice(slice_number, annotation, state):
 
     # The annotator currently displays this slice.
     previous_idx = current_idx
+
+    # .change() also fires when the arrow buttons update the slider programmatically.
+    # If the state already points to this slice, the arrow callback has already done all the work.
+    if new_idx == previous_idx:
+        return state, gr.skip(), gr.skip(), gr.skip(), gr.skip(), gr.skip()
 
     # Save the boxes currently displayed before changing image.
     has_annotations = store_slice_in_csv(slice_idx=previous_idx, annotation=annotation, state=state)
